@@ -50,11 +50,7 @@ class MsoMdocVcCredentialRequest: CredentialRequestProtocol {
         )
 
         do {
-            let encodedData = try JSONEncoder().encode(credentialRequestBody)
-            if let jsonString = String(data: encodedData, encoding: .utf8) {
-                print("\(logTag) [VCI-DEBUG] MSO_MDOC Request Body: \(jsonString)")
-            }
-            return encodedData
+            return try JSONEncoder().encode(credentialRequestBody)
         } catch {
             print(logTag, "Error occurred while constructing request body: \(error.localizedDescription)")
             throw DownloadFailedException("Failed to encode credential request body")
