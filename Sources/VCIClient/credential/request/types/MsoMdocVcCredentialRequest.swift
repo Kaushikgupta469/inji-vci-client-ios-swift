@@ -40,19 +40,18 @@ class MsoMdocVcCredentialRequest: CredentialRequestProtocol {
             throw DownloadFailedException("Missing doctype in issuer metadata")
         }
 
-        let claims = issuerMetaData.claims.map { Util.convertToAnyCodable(dict: $0) }
-
         let credentialRequestBody = MsoMdocCredentialRequestBody(
             format: issuerMetaData.credentialFormat,
             doctype: doctype,
-            claims: claims,
             proof: proof as JWTProof
         )
 
         do {
             return try JSONEncoder().encode(credentialRequestBody)
         } catch {
-            print(logTag, "Error occurred while constructing request body: \(error.localizedDescription)")
+            print(
+                logTag,
+                "Error occurred while constructing request body: \(error.localizedDescription)")
             throw DownloadFailedException("Failed to encode credential request body")
         }
     }
@@ -61,12 +60,10 @@ struct MsoMdocCredentialRequestBody: Encodable {
     let format: CredentialFormat
     let proof: JWTProof
     let doctype: String
-    let claims: [String: AnyCodable]?
 
-    init(format: CredentialFormat, doctype: String, claims: [String: AnyCodable]?, proof: JWTProof) {
+    init(format: CredentialFormat, doctype: String, proof: JWTProof) {
         self.format = format
         self.doctype = doctype
         self.proof = proof
-        self.claims = claims
     }
 }
