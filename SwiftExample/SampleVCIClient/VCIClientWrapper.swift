@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import Sodium
 import VCIClient
 
@@ -7,6 +8,7 @@ class VCIClientWrapper {
     private let sodium = Sodium()
 
     private init() {}
+
     
     func startCredentialOfferFlow(from scanned: String, onResult: @escaping (String) -> Void) {
         Task {
@@ -21,11 +23,12 @@ class VCIClientWrapper {
                         "dummy-auth-code"
                     },
                     getTokenResponse: { tokenRequest in try await self.exchangeToken(tokenRequest, proxy: false) },
-                    getProofJwt: { credentialIssuer, cNonce, _ in
+                    getProofJwt: { credentialIssuer, cNonce, proofSigningAlgorithmsSupported in
                         self.signProofJWT(
                             cNonce: cNonce,
                             issuer: credentialIssuer,
-                            isTrustedIssuer: false
+                            isTrustedIssuer: false,
+                            proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported
                         )
                     }
                 )
@@ -69,11 +72,12 @@ class VCIClientWrapper {
                         }
                     },
                     getTokenResponse: { tokenRequest in try await self.exchangeToken(tokenRequest, proxy: true) },
-                    getProofJwt: { credentialIssuer, cNonce, _ in
+                    getProofJwt: { credentialIssuer, cNonce, proofSigningAlgorithmsSupported in
                         self.signProofJWT(
                             cNonce: cNonce,
                             issuer: credentialIssuer,
-                            isTrustedIssuer: true
+                            isTrustedIssuer: true,
+                            proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported
                         )
                     })
 
@@ -83,10 +87,63 @@ class VCIClientWrapper {
                     onResult("Downloading VC")
                 }
             } catch {
+                onResult("❌ Trusted Issuer Error: \(error.localizedDescription)")
             }
         }
     }
-    
+
+    func startMdlTrustedIssuerFlow(onResult: @escaping (String) -> Void) {
+        Task {
+            do {
+                let client = VCIClient(traceabilityId: "demo-mdl-trace-id")
+                
+                print("[MDL-FLOW] Starting MDL Trusted Issuer Flow")
+                print("[MDL-FLOW] Credential Issuer: \(mdlCredentialIssuer)")
+                print("[MDL-FLOW] Credential Configuration ID: \(mdlCredentialConfigurationId)")
+                
+                let credentialResponse = try await client.requestCredentialFromTrustedIssuer(
+                    credentialIssuer: mdlCredentialIssuer,
+                    credentialConfigurationId: mdlCredentialConfigurationId,
+                    clientMetadata: ClientMetadata(clientId: mdlClientId, redirectUri: mdlRedirectUri),
+                    authorizeUser: { authEndpoint in
+                        await withCheckedContinuation { continuation in
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(name: Notification.Name("ShowAuthWebView"), object: authEndpoint)
+                            }
+                            
+                            var observer: NSObjectProtocol?
+                            observer = NotificationCenter.default.addObserver(forName: Notification.Name("AuthCodeReceived"), object: nil, queue: .main) { notification in
+                                if let code = notification.object as? String {
+                                    if let obs = observer {
+                                        NotificationCenter.default.removeObserver(obs)
+                                    }
+                                    continuation.resume(returning: code)
+                                }
+                            }
+                        }
+                    },
+                    getTokenResponse: { tokenRequest in try await self.exchangeToken(tokenRequest, proxyEndpoint: mdlProxyTokenEndpoint) },
+                    getProofJwt: { credentialIssuer, cNonce, proofSigningAlgorithmsSupported in
+                        print("[MDL-FLOW] Signing proof JWT with algorithms supported: \(proofSigningAlgorithmsSupported)")
+                        return self.signProofJWT(
+                            cNonce: cNonce,
+                            issuer: credentialIssuer,
+                            isTrustedIssuer: true,
+                            proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported
+                        )
+                    })
+                
+                if let vc = try credentialResponse?.toJsonString() {
+                    onResult("✅ MDL Credential Issued:\n\(vc)")
+                } else {
+                    onResult("⏳ Downloading MDL VC...")
+                }
+            } catch {
+                onResult("❌ MDL Error: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func fetchCredentialTypes(
         from credentialIssuer: String,
         onResult: @escaping (_ rawJson: String, _ keys: [String]) -> Void
@@ -106,8 +163,25 @@ class VCIClientWrapper {
         }
     }
 
+    private func signProofJWT(
+        cNonce: String?,
+        issuer: String,
+        isTrustedIssuer: Bool?,
+        proofSigningAlgorithmsSupported: [String] = []
+    ) -> String {
+        let useES256 = proofSigningAlgorithmsSupported.contains("ES256")
+        
+        print("[PROOF-JWT] Supported algorithms: \(proofSigningAlgorithmsSupported)")
+        print("[PROOF-JWT] Using algorithm: \(useES256 ? "ES256 (EC P-256)" : "EdDSA (Ed25519)")")
+        
+        if useES256 {
+            return signProofJWTWithEC(cNonce: cNonce, issuer: issuer)
+        } else {
+            return signProofJWTWithEd25519(cNonce: cNonce, issuer: issuer, isTrustedIssuer: isTrustedIssuer)
+        }
+    }
 
-    private func signProofJWT(cNonce: String?, issuer: String, isTrustedIssuer: Bool?) -> String {
+    private func signProofJWTWithEd25519(cNonce: String?, issuer: String, isTrustedIssuer: Bool?) -> String {
         guard let keyPair = sodium.sign.keyPair() else {
             fatalError("❌ Failed to generate Ed25519 key pair")
         }
@@ -127,15 +201,16 @@ class VCIClientWrapper {
             "kid": kid,
         ]
 
-        var nonceToUse = cNonce
         let now = Int(Date().timeIntervalSince1970)
 
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "aud": issuer,
-            "nonce": nonceToUse,
             "iat": now,
             "exp": now + 18000,
         ]
+        if let nonce = cNonce {
+            payload["nonce"] = nonce
+        }
 
         let headerData = try! JSONSerialization.data(withJSONObject: header)
         let payloadData = try! JSONSerialization.data(withJSONObject: payload)
@@ -151,11 +226,130 @@ class VCIClientWrapper {
         }
 
         let signatureBase64 = Data(signature).base64URLEncodedString()
-        return "\(signingInput).\(signatureBase64)"
+        
+        let jwt = "\(signingInput).\(signatureBase64)"
+        print("[PROOF-JWT] Ed25519 JWT header: \(String(data: headerData, encoding: .utf8) ?? "")")
+        return jwt
+    }
+
+    private func signProofJWTWithEC(cNonce: String?, issuer: String) -> String {
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 256
+        ]
+        
+        var error: Unmanaged<CFError>?
+        guard let privateKey = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {
+            fatalError("❌ Failed to generate EC P-256 key pair: \(error!.takeRetainedValue())")
+        }
+        
+        guard let publicKey = SecKeyCopyPublicKey(privateKey) else {
+            fatalError("❌ Failed to extract public key from EC key pair")
+        }
+
+        var exportError: Unmanaged<CFError>?
+        guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &exportError) as Data? else {
+            fatalError("❌ Failed to export public key: \(exportError!.takeRetainedValue())")
+        }
+
+        let xData = publicKeyData[1..<33]
+        let yData = publicKeyData[33..<65]
+
+        let publicKeyJwk: [String: Any] = [
+            "kty": "EC",
+            "crv": "P-256",
+            "x": xData.base64URLEncodedString(),
+            "y": yData.base64URLEncodedString()
+        ]
+        
+        let publicKeyJwkData = try! JSONSerialization.data(withJSONObject: publicKeyJwk, options: .sortedKeys)
+        let kid = "did:jwk:" + publicKeyJwkData.base64URLEncodedString() + "#0"
+
+        let header: [String: Any] = [
+            "alg": "ES256",
+            "typ": "openid4vci-proof+jwt",
+            "kid": kid
+        ]
+
+        let now = Int(Date().timeIntervalSince1970)
+        var payload: [String: Any] = [
+            "aud": issuer,
+            "iat": now,
+            "exp": now + 18000,
+        ]
+        if let nonce = cNonce {
+            payload["nonce"] = nonce
+        }
+
+        let headerData = try! JSONSerialization.data(withJSONObject: header, options: .sortedKeys)
+        let payloadData = try! JSONSerialization.data(withJSONObject: payload, options: .sortedKeys)
+        
+        let headerBase64 = headerData.base64URLEncodedString()
+        let payloadBase64 = payloadData.base64URLEncodedString()
+        
+        let signingInput = "\(headerBase64).\(payloadBase64)"
+        let signingInputData = signingInput.data(using: .utf8)!
+
+        var signError: Unmanaged<CFError>?
+        guard let derSignature = SecKeyCreateSignature(
+            privateKey,
+            .ecdsaSignatureMessageX962SHA256,
+            signingInputData as CFData,
+            &signError
+        ) as Data? else {
+            fatalError("❌ Failed to sign JWT with EC key: \(signError!.takeRetainedValue())")
+        }
+
+        let rawSignature = derToRawECDSASignature(derSignature)
+        let signatureBase64 = rawSignature.base64URLEncodedString()
+        
+        let jwt = "\(signingInput).\(signatureBase64)"
+        print("[PROOF-JWT] ES256 JWT header: \(String(data: headerData, encoding: .utf8) ?? "")")
+        print("[PROOF-JWT] ES256 JWT public key JWK: \(String(data: publicKeyJwkData, encoding: .utf8) ?? "")")
+        return jwt
+    }
+
+    private func derToRawECDSASignature(_ derData: Data) -> Data {
+        let bytes = [UInt8](derData)
+        var index = 0
+
+        guard bytes[index] == 0x30 else { fatalError("Invalid DER signature") }
+        index += 1
+        if bytes[index] & 0x80 != 0 {
+            let lenBytes = Int(bytes[index] & 0x7F)
+            index += 1 + lenBytes
+        } else {
+            index += 1
+        }
+        
+        guard bytes[index] == 0x02 else { fatalError("Invalid DER signature") }
+        index += 1
+        let rLen = Int(bytes[index])
+        index += 1
+        var rBytes = Array(bytes[index..<(index + rLen)])
+        index += rLen
+        
+        guard bytes[index] == 0x02 else { fatalError("Invalid DER signature") }
+        index += 1
+        let sLen = Int(bytes[index])
+        index += 1
+        var sBytes = Array(bytes[index..<(index + sLen)])
+
+        if rBytes.count == 33 && rBytes[0] == 0x00 { rBytes.removeFirst() }
+        if sBytes.count == 33 && sBytes[0] == 0x00 { sBytes.removeFirst() }
+
+        while rBytes.count < 32 { rBytes.insert(0x00, at: 0) }
+        while sBytes.count < 32 { sBytes.insert(0x00, at: 0) }
+        
+        return Data(rBytes + sBytes)
     }
 
     private func exchangeToken(_ req: TokenRequest, proxy: Bool) async throws -> TokenResponse {
-        // Build form-url-encoded body
+        let endpoint = proxy ? proxyTokenEndpoint : req.tokenEndpoint
+        return try await exchangeToken(req, proxyEndpoint: endpoint)
+    }
+    
+    private func exchangeToken(_ req: TokenRequest, proxyEndpoint: String) async throws -> TokenResponse {
         var items: [URLQueryItem] = [
             URLQueryItem(name: "grant_type", value: req.grantType.rawValue),
         ]
@@ -165,8 +359,7 @@ class VCIClientWrapper {
         if let tx = req.txCode { items.append(URLQueryItem(name: "tx_code", value: tx)) }
         if let clientId = req.clientId { items.append(URLQueryItem(name: "client_id", value: clientId)) }
         if let redirectUri = req.redirectUri { items.append(URLQueryItem(name: "redirect_uri", value: redirectUri)) }
-        let encodedBody = formURLEncode(items: items)
-        guard let url = URL(string: proxy ? proxyTokenEndpoint : req.tokenEndpoint) else {
+        guard let url = URL(string: proxyEndpoint) else {
             throw NSError(domain: "VCIClientWrapper", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid token endpoint"])
         }
 

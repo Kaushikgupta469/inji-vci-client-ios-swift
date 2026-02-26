@@ -27,6 +27,10 @@ class CredentialRequestExecutor {
                 proofJwt: proof
             )
 
+            if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
+                print("\(logTag) [VCI-DEBUG] Credential Request Body for format \(issuerMetadata.credentialFormat.rawValue): \(bodyString)")
+            }
+
             request.timeoutInterval = TimeInterval(timeoutInMillis) / 1000
 
             let networkResponse = try await session.sendRequest(request: request)

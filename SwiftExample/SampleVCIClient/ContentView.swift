@@ -65,6 +65,21 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(FilledButtonStyle(color: .green))
+                
+                Button("Start MDL Trusted Issuer Flow") {
+                    clearResults()
+                    flowType = .trustedIssuer
+                    isLoading = true
+                    resultText = ""
+                    VCIClientWrapper.shared.startMdlTrustedIssuerFlow { result in
+                        DispatchQueue.main.async {
+                            isLoading = false
+                            resultText = result
+                            authSheetItem = nil
+                        }
+                    }
+                }
+                .buttonStyle(FilledButtonStyle(color: .orange))
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowAuthWebView"))) { notification in
                 if let urlStr = notification.object as? String, let url = URL(string: urlStr) {
