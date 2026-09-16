@@ -288,10 +288,10 @@ class CredentialRequestExecutor {
                 return persistIssuerNonce(response, dpopManager: dpopManager)
             }
 
-            if !challenge.isDpop && challenge.isBearer {
+            if !challenge.isDpop {
                 Util.logWarning(
-                    message: "DPoP token downgraded to Bearer: AS does not require DPoP " +
-                             "(WWW-Authenticate: \(header(Constants.wwwAuthenticateHeader, in: failure.headers) ?? ""))",
+                    message: "DPoP token downgraded to Bearer: resource server returned a non-DPoP challenge " +
+                             "(WWW-Authenticate: \(header(Constants.wwwAuthenticateHeader, in: failure.headers) ?? "none"))",
                     className: String(describing: type(of: self))
                 )
                 return try await session.sendRequest(

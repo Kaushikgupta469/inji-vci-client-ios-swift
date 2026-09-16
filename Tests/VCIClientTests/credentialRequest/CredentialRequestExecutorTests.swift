@@ -430,4 +430,118 @@ final class CredentialRequestExecutorTests: XCTestCase {
         XCTAssertEqual(networkManager.sent[1].value(forHTTPHeaderField: "Authorization"), "Bearer token")
         XCTAssertNil(networkManager.sent[1].value(forHTTPHeaderField: "DPoP"))
     }
+
+    func testRequestCredential_dpop_bearerFallbackWhen401CarriesNoChallenge() async throws {
+        let factory = MockCredentialRequestFactory()
+        let networkManager = SequencedNetworkManager()
+        networkManager.outcomes = [
+            { throw NetworkRequestFailedException(message: "HTTP 401", httpStatusCode: 401, headers: [:]) },
+            { NetworkResponse(body: "{\"credential\":\"vc\"}", headers: nil) },
+        ]
+
+        let executor = CredentialRequestExecutor(credentialRequestFactoryDraft13: factory)
+        _ = try await executor.requestCredentialDraft13(
+            issuerMetadata: mockIssuerMetadata(),
+            credentialConfigurationId: "mock",
+            proof: mockProof(),
+            accessToken: "token",
+            session: networkManager,
+            tokenType: "DPoP",
+            dpopManager: try dpopManager()
+        )
+
+        XCTAssertEqual(networkManager.sent.count, 2)
+        XCTAssertEqual(networkManager.sent[1].value(forHTTPHeaderField: "Authorization"), "Bearer token")
+        XCTAssertNil(networkManager.sent[1].value(forHTTPHeaderField: "DPoP"))
+    }
+
+    func testRequestCredential_dpop_bearerFallbackOnNonDpopSchemeChallenge() async throws {
+        let factory = MockCredentialRequestFactory()
+        let networkManager = SequencedNetworkManager()
+        networkManager.outcomes = [
+            {
+                throw NetworkRequestFailedException(
+                    message: "HTTP 401",
+                    httpStatusCode: 401,
+                    headers: ["WWW-Authenticate": "Basic realm=\"issuer\""]
+                )
+            },
+            { NetworkResponse(body: "{\"credential\":\"vc\"}", headers: nil) },
+        ]
+
+        let executor = CredentialRequestExecutor(credentialRequestFactoryDraft13: factory)
+        _ = try await executor.requestCredentialDraft13(
+            issuerMetadata: mockIssuerMetadata(),
+            credentialConfigurationId: "mock",
+            proof: mockProof(),
+            accessToken: "token",
+            session: networkManager,
+            tokenType: "DPoP",
+            dpopManager: try dpopManager()
+        )
+
+        XCTAssertEqual(networkManager.sent.count, 2)
+        XCTAssertEqual(networkManager.sent[1].value(forHTTPHeaderField: "Authorization"), "Bearer token")
+        XCTAssertNil(networkManager.sent[1].value(forHTTPHeaderField: "DPoP"))
+    }
+
+    func testRequestCredential_dpop_noBearerFallbackOnDpopChallenge() async throws {
+        let factory = MockCredentialRequestFactory()
+        let networkManager = SequencedNetworkManager()
+        networkManager.outcomes = [
+            {
+                throw NetworkRequestFailedException(
+                    message: "HTTP 401",
+                    httpStatusCode: 401,
+                    headers: ["WWW-Authenticate": "DPoP error=\"invalid_dpop_proof\""]
+                )
+            },
+        ]
+
+        let executor = CredentialRequestExecutor(credentialRequestFactoryDraft13: factory)
+        do {
+            _ = try await executor.requestCredentialDraft13(
+                issuerMetadata: mockIssuerMetadata(),
+                credentialConfigurationId: "mock",
+                proof: mockProof(),
+                accessToken: "token",
+                session: networkManager,
+                tokenType: "DPoP",
+                dpopManager: try dpopManager()
+            )
+            XCTFail("Expected DownloadFailedException but got success")
+        } catch is DownloadFailedException {
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        XCTAssertEqual(networkManager.sent.count, 1)
+    }
+
+    func testRequestCredential_dpop_noRetryOnNon401Failure() async throws {
+        let factory = MockCredentialRequestFactory()
+        let networkManager = SequencedNetworkManager()
+        networkManager.outcomes = [
+            { throw NetworkRequestFailedException(message: "HTTP 400", httpStatusCode: 400, headers: [:]) },
+        ]
+
+        let executor = CredentialRequestExecutor(credentialRequestFactoryDraft13: factory)
+        do {
+            _ = try await executor.requestCredentialDraft13(
+                issuerMetadata: mockIssuerMetadata(),
+                credentialConfigurationId: "mock",
+                proof: mockProof(),
+                accessToken: "token",
+                session: networkManager,
+                tokenType: "DPoP",
+                dpopManager: try dpopManager()
+            )
+            XCTFail("Expected DownloadFailedException but got success")
+        } catch is DownloadFailedException {
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        XCTAssertEqual(networkManager.sent.count, 1)
+    }
 }
