@@ -41,4 +41,39 @@ final class TokenServiceTests: XCTestCase {
         XCTAssertEqual(result.accessToken, "mock-token")
     }
 
+    func test_getAccessToken_attachesDpopProof_whenManagerInitialized() async throws {
+        let service = TokenService(networkManager: MockNetworkManager())
+        let dpopManager = DPoPManager()
+        try dpopManager.initialize(tokenEndpoint: "https://example.com/token", authorizationServerSupportedAlgorithms: ["ES256"])
+
+        var captured: TokenRequest?
+        _ = try await service.getAccessToken(
+            getTokenResponse: { request in
+                captured = request
+                return TokenResponse(accessToken: "mock-token", tokenType: "DPoP")
+            },
+            tokenEndpoint: "https://example.com/token",
+            preAuthCode: "valid-code",
+            dpopManager: dpopManager
+        )
+
+        let proof = try XCTUnwrap(captured?.dpopProof)
+        XCTAssertEqual(proof.components(separatedBy: ".").count, 3)
+    }
+
+    func test_getAccessToken_leavesDpopProofNil_whenManagerNotInitialized() async throws {
+        let service = TokenService(networkManager: MockNetworkManager())
+
+        var captured: TokenRequest?
+        _ = try await service.getAccessToken(
+            getTokenResponse: { request in
+                captured = request
+                return TokenResponse(accessToken: "mock-token", tokenType: "Bearer")
+            },
+            tokenEndpoint: "https://example.com/token",
+            preAuthCode: "valid-code"
+        )
+
+        XCTAssertNil(captured?.dpopProof)
+    }
 }

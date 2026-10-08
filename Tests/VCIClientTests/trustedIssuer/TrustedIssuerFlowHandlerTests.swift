@@ -25,7 +25,7 @@ final class TrustedIssuerHandlerTests: XCTestCase {
             clientMetadata: ClientMetadata(clientId: "", redirectUri: ""),
             authorizationMethods: [AuthorizationMethod.redirectToWeb(openWebPage: {_ in ["code": "auth_code"]})],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer", expiresIn: nil) },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["jwt"]) }
         )
 
         XCTAssertTrue(mockService.didCallRequestCredentials)
@@ -63,7 +63,7 @@ final class TrustedIssuerHandlerTests: XCTestCase {
             clientMetadata: ClientMetadata(clientId: "", redirectUri: ""),
             authorizationMethods: [],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertTrue(mockService.didCallRequestCredentials)
@@ -96,7 +96,7 @@ final class TrustedIssuerHandlerTests: XCTestCase {
             clientMetadata: ClientMetadata(clientId: "", redirectUri: ""),
             authorizationMethods: [],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertTrue(mockService.didCallRequestCredentials)
@@ -129,7 +129,7 @@ final class TrustedIssuerHandlerTests: XCTestCase {
                 clientMetadata: ClientMetadata(clientId: "", redirectUri: ""),
                 authorizationMethods: [AuthorizationMethod.redirectToWeb(openWebPage: {_ in ["code": "auth_code"]})],
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer", expiresIn: nil) },
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["jwt"]) }
+                getProofs: { _ in CredentialRequestProofs(proofs: ["jwt"]) }
             )
             XCTFail("Expected error but got success")
         } catch let error as VCIClientException {

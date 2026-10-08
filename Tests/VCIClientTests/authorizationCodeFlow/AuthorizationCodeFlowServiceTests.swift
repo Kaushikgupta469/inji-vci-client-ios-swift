@@ -32,9 +32,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 }),
             ],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-            getProofJwt: { _, _, _ in "mock-jwt" },
+            getProofJwt: { _ in "mock-jwt" },
             credentialConfigurationId: "vc1",
-            proofSigningAlgorithmsSupported: ["rs256"]
+            proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
         )
 
         XCTAssertEqual(result.credential.value as? String, "mock-credential")
@@ -58,12 +58,12 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 .redirectToWeb(openWebPage: { _ in ["code": "mock-auth-code"] }),
             ],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-            getProofs: { _, nonce, _ in
-                capturedNonce = nonce
+            getProofs: { proofRequest in
+                capturedNonce = proofRequest.nonce
                 return CredentialRequestProofs(proofs: ["mock-jwt"])
             },
             credentialConfigurationId: "vc1",
-            proofSigningAlgorithmsSupported: ["rs256"]
+            proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
         )
 
         XCTAssertEqual(capturedNonce, "nonce-v1")
@@ -81,9 +81,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 issuerMetadata: IssuerMetadata.mock(),
                 clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected to throw due to missing authorization endpoint")
         } catch {
@@ -102,9 +102,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 issuerMetadata: IssuerMetadata.mock(),
                 clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected to throw due to missing token endpoint")
         } catch {
@@ -119,6 +119,8 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
         resolver.mockTokenEndpoint = "https://auth.example.com/token"
         resolver.mcokAuthorizationEndpoint = nil
         resolver.mockInteractiveAuthorizationEndpoint = "https://auth.example.com/interactive"
+        resolver.mockRequireInteractiveAuthorizationRequest = true
+
 
         let interactiveHandler = MockInteractiveAuthorizationHandler()
         interactiveHandler.responseToReturn = AuthorizationResponse(
@@ -158,18 +160,60 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
             clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
             authorizationMethods: [],
             getTokenResponse: { _ in TokenResponse.mock() },
-            getProofJwt: { _, _, _ in "mock-jwt" },
+            getProofJwt: { _ in "mock-jwt" },
             credentialConfigurationId: "vc1",
-            proofSigningAlgorithmsSupported: ["rs256"],
+            proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"]),
             credentialOffer: offer
         )
 
         XCTAssertEqual(result.credential.value as? String, "mock-credential")
     }
 
+    func test_interactiveAuth_threadsDpopJktThumbprintToHandler() async throws {
+        let resolver = MockAuthServerResolver()
+        resolver.mockIssuer = "https://auth.example.com"
+        resolver.mockGrantTypesSupported = ["authorization_code"]
+        resolver.mockTokenEndpoint = "https://auth.example.com/token"
+        resolver.mcokAuthorizationEndpoint = nil
+        resolver.mockInteractiveAuthorizationEndpoint = "https://auth.example.com/interactive"
+        resolver.mockRequireInteractiveAuthorizationRequest = true
+
+        let interactiveHandler = MockInteractiveAuthorizationHandler()
+        interactiveHandler.responseToReturn = AuthorizationResponse(
+            authorizationCode: "interactive-code",
+            status: "success",
+            error: nil,
+            errorDescription: nil,
+            authSession: "session-1"
+        )
+
+        let service = makeService(resolver: resolver, interactiveAuthHandler: interactiveHandler)
+        let dpopManager = DPoPManager()
+
+        _ = try await service.requestCredentialsDraft13(
+            issuerMetadata: IssuerMetadata(
+                credentialIssuer: "https://example.com",
+                credentialEndpoint: "https://example.com/credential",
+                credentialFormat: .ldp_vc,
+                authorizationServers: ["https://auth.example.com"]
+            ),
+            clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
+            authorizationMethods: [],
+            getTokenResponse: { _ in TokenResponse.mock() },
+            getProofJwt: { _ in "mock-jwt" },
+            credentialConfigurationId: "vc1",
+            proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"]),
+            dpopManager: dpopManager
+        )
+
+        let expectedThumbprint = try dpopManager.jwkThumbprint()
+        XCTAssertEqual(interactiveHandler.capturedDpopJkt, expectedThumbprint)
+    }
+
     func test_interactiveAuth_missingInteractionType_shouldFallbackToAuthorizationEndpoint() async throws {
         let resolver = MockAuthServerResolver()
         resolver.mockInteractiveAuthorizationEndpoint = "https://auth.example.com/interactive"
+        resolver.mockRequireInteractiveAuthorizationRequest = false
 
         let interactiveHandler = MockInteractiveAuthorizationHandler()
         interactiveHandler.shouldThrowMissingInteractionType = true
@@ -186,12 +230,50 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 .redirectToWeb(openWebPage: { _ in ["code": "fallback-auth-code"] }),
             ],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-            getProofJwt: { _, _, _ in "mock-jwt" },
+            getProofJwt: { _ in "mock-jwt" },
             credentialConfigurationId: "vc1",
-            proofSigningAlgorithmsSupported: ["rs256"]
+            proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
         )
 
         XCTAssertEqual(result.credential.value as? String, "mock-credential")
+    }
+
+    func test_interactiveAuth_missingInteractionType_shouldNotFallbackWhenInteractiveAuthorizationIsRequired() async {
+
+        let resolver = MockAuthServerResolver()
+        resolver.mockInteractiveAuthorizationEndpoint = "https://auth.example.com/interactive"
+        resolver.mockRequireInteractiveAuthorizationRequest = true
+
+        let interactiveHandler = MockInteractiveAuthorizationHandler()
+        interactiveHandler.shouldThrowMissingInteractionType = true
+
+        let service = makeService(
+            resolver: resolver,
+            interactiveAuthHandler: interactiveHandler
+        )
+
+        await XCTAssertThrowsErrorAsync {
+            _ = try await service.requestCredentialsDraft13(
+                issuerMetadata: IssuerMetadata.mock(),
+                clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
+                authorizationMethods: [
+                    .redirectToWeb(openWebPage: { _ in ["code": "fallback-auth-code"] }),
+                ],
+                getTokenResponse: { _ in
+                    TokenResponse(accessToken: "mock-token", tokenType: "Bearer")
+                },
+                getProofJwt: { _ in "mock-jwt" },
+                credentialConfigurationId: "vc1",
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
+            )
+        } verify: { error in
+            let downloadError = error as? DownloadFailedException
+            XCTAssertNotNil(downloadError)
+            XCTAssertEqual(
+                downloadError?.issuerErrorCode,
+                Constants.MISSING_INTERACTION_TYPE_ERROR
+            )
+        }
     }
 
     func test_requestCredentials_whenInteractiveAuthorizationIsMissingType_wrapsFailure() async {
@@ -201,6 +283,7 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
         resolver.mockTokenEndpoint = "https://auth.example.com/token"
         resolver.mcokAuthorizationEndpoint = nil
         resolver.mockInteractiveAuthorizationEndpoint = "https://auth.example.com/interactive"
+        resolver.mockRequireInteractiveAuthorizationRequest = true
 
         let interactiveHandler = MockInteractiveAuthorizationHandler()
         interactiveHandler.errorToThrow = InteractiveAuthorizationException(message: "missing_interaction_type")
@@ -235,9 +318,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
                 authorizationMethods: [],
                 getTokenResponse: { _ in TokenResponse.mock() },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"],
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"]),
                 credentialOffer: offer
             )
             XCTFail("Expected interactive authorization failure")
@@ -258,9 +341,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                 clientMetadata: ClientMetadata(clientId: "client123", redirectUri: "app://redirect"),
                 authorizationMethods: [],
                 getTokenResponse: { _ in TokenResponse.mock() },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected missing authorization method failure")
         } catch {
@@ -279,9 +362,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                     .redirectToWeb(openWebPage: { _ in ["code": "mock-auth-code"] }),
                 ],
                 getTokenResponse: { _ in TokenResponse.mock() },
-                getProofJwt: { _, _, _ in throw NSError(domain: "proof", code: 1) },
+                getProofJwt: { _ in throw NSError(domain: "proof", code: 1) },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected proof callback failure")
         } catch {
@@ -303,9 +386,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                     .redirectToWeb(openWebPage: { _ in ["code": "mock-auth-code"] }),
                 ],
                 getTokenResponse: { _ in TokenResponse.mock() },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected credential executor failure")
         } catch {
@@ -327,9 +410,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                     .redirectToWeb(openWebPage: { _ in ["code": "mock-auth-code"] }),
                 ],
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock-token", tokenType: "Bearer") },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected credential request failure")
         } catch {
@@ -350,9 +433,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                     .redirectToWeb(openWebPage: { _ in ["code": "mock-auth-code"] }),
                 ],
                 getTokenResponse: { _ in TokenResponse.mock() },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected token service failure")
         } catch {
@@ -372,9 +455,9 @@ final class AuthorizationCodeFlowServiceTests: XCTestCase {
                     .redirectToWeb(openWebPage: { _ in ["code": "mock-auth-code"] }),
                 ],
                 getTokenResponse: { _ in TokenResponse.mock() },
-                getProofJwt: { _, _, _ in "mock-jwt" },
+                getProofJwt: { _ in "mock-jwt" },
                 credentialConfigurationId: "vc1",
-                proofSigningAlgorithmsSupported: ["rs256"]
+                proofBindingContext: ProofBindingContext(proofSigningAlgorithmsSupported: ["rs256"])
             )
             XCTFail("Expected nil credential failure")
         } catch {

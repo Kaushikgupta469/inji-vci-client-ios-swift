@@ -11,7 +11,8 @@ class TokenService {
         tokenEndpoint: String,
         timeoutMillis: Int64 = Constants.defaultNetworkTimeoutInMillis,
         preAuthCode: String,
-        txCode: String? = nil
+        txCode: String? = nil,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> TokenResponse {
         return try await obtainAccessToken(
             grantType: .preAuthorized,
@@ -19,7 +20,8 @@ class TokenService {
             tokenEndpoint: tokenEndpoint,
             timeoutMillis: timeoutMillis,
             preAuthCode: preAuthCode,
-            txCode: txCode
+            txCode: txCode,
+            dpopManager: dpopManager
         )
     }
 
@@ -30,7 +32,8 @@ class TokenService {
         authCode: String,
         clientId: String? = nil,
         redirectUri: String? = nil,
-        codeVerifier: String? = nil
+        codeVerifier: String? = nil,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> TokenResponse {
         return try await obtainAccessToken(
             grantType: .authorizationCode,
@@ -40,10 +43,11 @@ class TokenService {
             authCode: authCode,
             clientId: clientId,
             redirectUri: redirectUri,
-            codeVerifier: codeVerifier
+            codeVerifier: codeVerifier,
+            dpopManager: dpopManager
         )
     }
-    
+
     private func obtainAccessToken(
         grantType: GrantType,
         getTokenResponse: @escaping TokenResponseCallback,
@@ -54,8 +58,10 @@ class TokenService {
         authCode: String? = nil,
         clientId: String? = nil,
         redirectUri: String? = nil,
-        codeVerifier: String? = nil
+        codeVerifier: String? = nil,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> TokenResponse {
+        let dpopProof = dpopManager.isInitialized ? try dpopManager.generateTokenProof() : nil
         let tokenRequest = TokenRequest(
             grantType: grantType,
             tokenEndpoint: tokenEndpoint,
@@ -64,7 +70,8 @@ class TokenService {
             txCode: txCode,
             clientId: clientId,
             redirectUri: redirectUri,
-            codeVerifier: codeVerifier
+            codeVerifier: codeVerifier,
+            dpopProof: dpopProof
         )
 
         return try await getTokenResponse(tokenRequest)

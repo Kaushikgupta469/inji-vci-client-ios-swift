@@ -89,9 +89,14 @@ class AuthorizationServerResolver {
             )
         }
         if expectedGrantType == GrantType.authorizationCode.rawValue,
-           // either authorization_endpoint or interactive_authorization_endpoint is required
-           (authServerMetadata.authorizationEndpoint == nil || authServerMetadata.authorizationEndpoint?.isEmpty == true) &&
-           (authServerMetadata.interactiveAuthorizationEndpoint == nil || authServerMetadata.interactiveAuthorizationEndpoint?.isEmpty == true)
+           (authServerMetadata.authorizationEndpoint == nil ||
+            authServerMetadata.authorizationEndpoint?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty == true) &&
+           (authServerMetadata.interactiveAuthorizationEndpoint == nil ||
+            authServerMetadata.interactiveAuthorizationEndpoint?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty == true)
         {
             throw AuthorizationServerDiscoveryException(
                 "Missing authorization_endpoint for authorization_code flow."

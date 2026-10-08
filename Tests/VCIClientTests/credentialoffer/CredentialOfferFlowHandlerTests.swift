@@ -56,7 +56,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
             getTxCode: { _, _, _ in "tx-code" },
             authorizationMethods: [],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertTrue(preAuthFlowService.didCallRequest)
@@ -94,7 +94,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
             getTxCode: { _, _, _ in "tx-code" },
             authorizationMethods: [],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertTrue(preAuthFlowService.didCallRequest)
@@ -133,7 +133,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
             getTxCode: { _, _, _ in "tx-code" },
             authorizationMethods: [.redirectToWeb(openWebPage: { _ in ["code": "auth_code"] })],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertTrue(authCodeFlowService.didCallRequestCredentials)
@@ -176,7 +176,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
                 getTxCode: { _, _, _ in "tx-code" },
                 authorizationMethods: [],
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: []) }
+                getProofs: { _ in CredentialRequestProofs(proofs: []) }
             ) as Any
         }
     }
@@ -209,7 +209,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
             getTxCode: { _,_,_ in "tx-code" },
             authorizationMethods: [AuthorizationMethod.redirectToWeb(openWebPage: {_ in ["code": "auth_code"]})],
             getTokenResponse: {_ in TokenResponse(accessToken: "mock", tokenType: "Bearer")},
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["jwt"]) }
         )
         XCTAssertTrue(authCodeFlowService.didCallRequestCredentials)
     }
@@ -242,7 +242,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
                 getTxCode: { _,_,_ in "tx-code" },
                 authorizationMethods: [AuthorizationMethod.redirectToWeb(openWebPage: {_ in ["code": "auth_code"]})],
                 getTokenResponse: {_ in TokenResponse(accessToken: "mock", tokenType: "Bearer")},
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["jwt"]) },
+                getProofs: { _ in CredentialRequestProofs(proofs: ["jwt"]) },
                 onCheckIssuerTrust: {_,_ in false}
             )
             XCTFail("Expected OfferFetchFailedException")
@@ -278,7 +278,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
                 getTxCode: { _,_,_ in "tx-code" },
                 authorizationMethods: [AuthorizationMethod.redirectToWeb(openWebPage: {_ in ["code": "auth_code"]})],
                 getTokenResponse: {_ in TokenResponse(accessToken: "mock", tokenType: "Bearer")},
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["jwt"]) }
+                getProofs: { _ in CredentialRequestProofs(proofs: ["jwt"]) }
             )
             XCTFail("Expected OfferFetchFailedException")
         } catch let error as CredentialOfferFetchFailedException {
@@ -324,7 +324,7 @@ final class CredentialOfferFlowHandlerTests: XCTestCase {
                 getTxCode: { _, _, _ in "tx-code" },
                 authorizationMethods: [AuthorizationMethod.redirectToWeb(openWebPage: {_ in ["code": "auth_code"]})],
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["jwt"]) }
+                getProofs: { _ in CredentialRequestProofs(proofs: ["jwt"]) }
             )
             XCTFail("Expected CredentialOfferFetchFailedException for batch credential offer")
         } catch let error as DownloadFailedException {

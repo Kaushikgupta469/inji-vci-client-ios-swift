@@ -61,6 +61,9 @@ The implementation follows:
 - Authorization server discovery for both flows
 - PKCE-compliant OAuth 2.0 Authorization Code flow (RFC 7636)
   - PKCE session is managed internally by the library
+- Pushed Authorization Requests (PAR) support (RFC 9126)
+  - Used automatically when the authorization server advertises a `pushed_authorization_request_endpoint`
+  - Falls back to a standard authorization request if the push fails and PAR is not mandated by the authorization server
 - Well-defined **exception handling** with `VCI-XXX` error codes (see more on [this](#-error-handling))
 - Support for multiple Credential formats:
   - `ldp_vc`
@@ -571,19 +574,22 @@ do {
 
 ### Error code reference
 
-| Code    | Exception Type                          | Description                                                                                              |
-|---------|-----------------------------------------|----------------------------------------------------------------------------------------------------------|
-| VCI-001 | `AuthorizationServerDiscoveryException` | Failed to discover authorization server                                                                  |
-| VCI-002 | `DownloadFailedException`               | Failed to download credential                                                                            |
-| VCI-003 | `InvalidAccessTokenException`           | Access token is invalid                                                                                  |
-| VCI-004 | `InvalidDataProvidedException`          | Required details not provided                                                                            |
-| VCI-005 | `InvalidPublicKeyException`             | Invalid public key passed                                                                                |
-| VCI-006 | `NetworkRequestFailedException`         | Network request failed                                                                                   |
-| VCI-007 | `NetworkRequestTimeoutException`        | Network request timed-out                                                                                |
-| VCI-008 | `CredentialOfferFetchFailedException`   | Failed to fetch credential offer                                                                         |
-| VCI-009 | `IssuerMetadataFetchException`          | Failed to fetch issuerMetadata                                                                           |
-| VCI-010 | `VCIClientException`                    | Generic API-boundary wrapper or unknown exception surfaced by `VCIClient` public methods                 |
-| VCI-011 | `InteractiveAuthorizationException`     | Failed to perform Interactive authorization (Presentation During Issuance / Redirect to Web interaction) |
+| Code    | Exception Type                          | Description                                                                                               |
+|---------|-----------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| VCI-001 | `AuthorizationServerDiscoveryException` | Failed to discover authorization server                                                                   |
+| VCI-002 | `DownloadFailedException`               | Failed to download credential                                                                             |
+| VCI-003 | `InvalidAccessTokenException`           | Access token is invalid                                                                                   |
+| VCI-004 | `InvalidDataProvidedException`          | Required details not provided                                                                             |
+| VCI-005 | `InvalidPublicKeyException`             | Invalid public key passed                                                                                 |
+| VCI-006 | `NetworkRequestFailedException`         | Network request failed                                                                                    |
+| VCI-007 | `NetworkRequestTimeoutException`        | Network request timed-out                                                                                 |
+| VCI-008 | `CredentialOfferFetchFailedException`   | Failed to fetch credential offer                                                                          |
+| VCI-009 | `IssuerMetadataFetchException`          | Failed to fetch issuerMetadata                                                                            |
+| VCI-010 | `VCIClientException`                    | Generic API-boundary wrapper or unknown exception surfaced by `VCIClient` public methods                  |
+| VCI-011 | `InteractiveAuthorizationException`     | Failed to perform Interactive authorization (Presentation During Issuance / Redirect to Web interaction)  |
+| VCI-012 | `IllegalArgumentException`              | Invalid or missing argument in a request or response payload                                              |
+| VCI-013 | `DPoPException`                         | Failed to generate or apply DPoP proof (RFC 9449)                                                         |
+| VCI-014 | `PushedAuthorizationRequestException`   | Failed to push authorization request (RFC 9126)                                                           |
 
 ---
 

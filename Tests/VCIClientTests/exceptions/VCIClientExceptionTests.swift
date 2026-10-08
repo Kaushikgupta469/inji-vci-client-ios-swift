@@ -38,4 +38,25 @@ final class VCIClientExceptionTests: XCTestCase {
         XCTAssertNil(exception.issuerErrorCode)
         XCTAssertNil(exception.issuerErrorDescription)
     }
+
+    func testShouldConstructDpopExceptionWithoutServerDetails() {
+        let exception = DPoPException("DPoP session is not initialized for the current flow")
+
+        XCTAssertEqual("VCI-013", exception.code)
+        XCTAssertNil(exception.issuerErrorCode)
+        XCTAssertNil(exception.issuerErrorDescription)
+        XCTAssertEqual(
+            "DPoP session is not initialized for the current flow",
+            exception.message
+        )
+    }
+
+    func testDpopExceptionRetainsRootCodeWhenWrappingAVciException() {
+        let exception = DPoPException(
+            message: "Failed to sign DPoP proof: key unusable",
+            cause: InvalidPublicKeyException("unsupported curve")
+        )
+
+        XCTAssertEqual("VCI-005", exception.code)
+    }
 }

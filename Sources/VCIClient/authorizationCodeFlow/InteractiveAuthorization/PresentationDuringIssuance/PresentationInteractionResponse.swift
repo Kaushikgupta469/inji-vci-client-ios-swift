@@ -81,24 +81,29 @@ final class PresentationInteractionResponse: InteractionResponse, Decodable {
     }
     
     override func validate() throws {
-        guard let type = type, type == "openid4vp_presentation" else {
-            throw IllegalArgumentException("Invalid type: expected 'openid4vp_presentation'")
+        guard let type = type,
+              type == InteractionType.openId4VpPresentation.rawValue
+                || type == InteractionType.openId4VpPresentationIAE.rawValue
+        else {
+            throw IllegalArgumentException(
+                "Invalid type: expected '\(InteractionType.openId4VpPresentation.rawValue)' or '\(InteractionType.openId4VpPresentationIAE.rawValue)'"
+            )
         }
 
         guard !openid4vpRequest.isEmpty else {
             throw IllegalArgumentException("openid4vpRequest must not be empty")
         }
+
     }
-}
 
+    enum ValidationError: Error {
+        case invalidStatus(String)
+        case invalidType(String)
+        case blankAuthSession
+        case emptyOpenId4VpRequest
+        case missing(String)
+        case invalid(String)
+        case blank(String)
 
-
-enum ValidationError: Error {
-    case invalidStatus(String)
-    case invalidType(String)
-    case blankAuthSession
-    case emptyOpenId4VpRequest
-    case missing(String)
-    case invalid(String)
-    case blank(String)
+    }
 }

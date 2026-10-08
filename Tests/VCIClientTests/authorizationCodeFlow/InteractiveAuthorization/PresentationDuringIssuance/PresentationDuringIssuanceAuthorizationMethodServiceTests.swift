@@ -160,7 +160,7 @@ final class PresentationDuringIssuanceAuthorizationMethodServiceTests: XCTestCas
         let sut = makeService(openId4vp: FakeOpenID4VP())
         XCTAssertEqual(
             sut.type(),
-            InteractionType.openId4VpPresentation.rawValue
+            InteractionType.openId4VpPresentationIAE.rawValue
         )
     }
 
@@ -212,6 +212,42 @@ final class PresentationDuringIssuanceAuthorizationMethodServiceTests: XCTestCas
         XCTAssertEqual(network.capturedParams["auth_session"], "auth-session-1")
         XCTAssertNotNil(network.capturedParams["openid4vp_response"])
     }
+
+    func test_full_success_flow_accepts_supported_iae_response_modes() async throws {
+
+        for responseMode in ["iae_post", "iae_post.jwt"] {
+
+            let fake = FakeOpenID4VP()
+            let network = MockNetworkManager()
+
+            let success = AuthorizationResponse(
+                authorizationCode: "code-123",
+                status: "success",
+                error: nil,
+                errorDescription: nil,
+                authSession: "auth-session-1"
+            )
+
+            network.responseBody =
+                String(data: try JSONEncoder().encode(success), encoding: .utf8)!
+
+            var request = authorizationRequest
+            request["response_mode"] = responseMode
+
+            let sut = makeService(
+                openId4vp: fake,
+                network: network
+            )
+
+            let response = try await sut.authorizeUser(
+                requestData: makeRequestData(ovpRequest: request)
+            )
+
+            XCTAssertEqual(response.status, "success")
+            XCTAssertEqual(response.authorizationCode, "code-123")
+        }
+    }
+
 
     // MARK: - Empty selection
 
@@ -275,7 +311,7 @@ final class PresentationDuringIssuanceAuthorizationMethodServiceTests: XCTestCas
         XCTAssertFalse(didSelectCredentials)
         XCTAssertEqual(
             fake.constructedError?.localizedDescription,
-            "response_mode must be 'iar-post' or 'iar-post.jwt'"
+            "response_mode must be 'iar-post', 'iar-post.jwt', 'iae_post' or 'iae_post.jwt'"
         )
     }
 

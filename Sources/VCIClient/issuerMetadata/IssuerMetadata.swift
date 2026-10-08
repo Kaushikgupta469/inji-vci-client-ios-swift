@@ -15,9 +15,6 @@ public struct IssuerMetadata : Codable{
     public let scope: String?
     public let specVersion: OID4VCIVersion
 
-    /// Detected spec version based on issuer metadata hints.
-    /// This is resolved during metadata parsing, with v1 as the fallback when the hints are inconclusive.
-
     public init(
         credentialIssuer: String,
         credentialEndpoint: String,

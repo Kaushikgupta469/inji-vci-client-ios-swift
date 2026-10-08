@@ -25,7 +25,8 @@ class CredentialOfferFlowHandler {
         getProofs: @escaping ProofsCallback,
         onCheckIssuerTrust: CheckIssuerTrustCallback = nil,
         networkSession: NetworkManager = NetworkManager.shared,
-        downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis
+        downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> CredentialResponse {
         try await executeDownloadCredentials(
             credentialOffer: credentialOffer,
@@ -34,7 +35,7 @@ class CredentialOfferFlowHandler {
             authorizationMethods: authorizationMethods,
             onCheckIssuerTrust: onCheckIssuerTrust,
             downloadTimeoutInMillis: downloadTimeoutInMillis
-        ) { offer, issuerMetadataResponse, credentialConfigurationId, proofSigningAlgorithmsSupported in
+        ) { offer, issuerMetadataResponse, credentialConfigurationId, proofBindingContext in
             switch issuerMetadataResponse.issuerMetadata.specVersion {
             case .v1:
                 if offer.isPreAuthorizedFlow {
@@ -44,9 +45,10 @@ class CredentialOfferFlowHandler {
                         getTokenResponse: getTokenResponse,
                         getProofs: getProofs,
                         credentialConfigurationId: credentialConfigurationId,
-                        proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported,
+                        proofBindingContext: proofBindingContext,
                         getTxCode: getTxCode,
-                        downloadTimeoutInMillis: downloadTimeoutInMillis
+                        downloadTimeoutInMillis: downloadTimeoutInMillis,
+                        dpopManager: dpopManager
                     )
                 } else if offer.isAuthorizationCodeFlow {
                     return try await self.authorizationCodeFlowService.requestCredentials(
@@ -56,18 +58,19 @@ class CredentialOfferFlowHandler {
                         getTokenResponse: getTokenResponse,
                         getProofs: getProofs,
                         credentialConfigurationId: credentialConfigurationId,
-                        proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported,
+                        proofBindingContext: proofBindingContext,
                         credentialOffer: offer,
                         downloadTimeOutInMillis: downloadTimeoutInMillis,
-                        session: networkSession
+                        session: networkSession,
+                        dpopManager: dpopManager
                     )
                 } else {
                     throw CredentialOfferFetchFailedException("Credential offer does not contain a supported grant type")
                 }
 
             case .draft13:
-                let proofJwtCallback: ProofJwtCallback = { issuer, nonce, algs in
-                    let proofs = try await getProofs(issuer, nonce, algs)
+                let proofJwtCallback: ProofJwtCallback = { proofRequest in
+                    let proofs = try await getProofs(proofRequest)
                     guard let jwt = proofs.firstProof else {
                         throw DownloadFailedException("Draft13 issuer requires a single JWT proof")
                     }
@@ -81,9 +84,10 @@ class CredentialOfferFlowHandler {
                         getTokenResponse: getTokenResponse,
                         getProofJwt: proofJwtCallback,
                         credentialConfigurationId: credentialConfigurationId,
-                        proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported,
+                        proofBindingContext: proofBindingContext,
                         getTxCode: getTxCode,
-                        downloadTimeoutInMillis: downloadTimeoutInMillis
+                        downloadTimeoutInMillis: downloadTimeoutInMillis,
+                        dpopManager: dpopManager
                     )
                 } else if offer.isAuthorizationCodeFlow {
                     draft13Response = try await self.authorizationCodeFlowService.requestCredentialsDraft13(
@@ -93,10 +97,11 @@ class CredentialOfferFlowHandler {
                         getTokenResponse: getTokenResponse,
                         getProofJwt: proofJwtCallback,
                         credentialConfigurationId: credentialConfigurationId,
-                        proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported,
+                        proofBindingContext: proofBindingContext,
                         credentialOffer: offer,
                         downloadTimeOutInMillis: downloadTimeoutInMillis,
-                        session: networkSession
+                        session: networkSession,
+                        dpopManager: dpopManager
                     )
                 } else {
                     throw CredentialOfferFetchFailedException("Credential offer does not contain a supported grant type")
@@ -117,7 +122,7 @@ class CredentialOfferFlowHandler {
         authorizationMethods: [AuthorizationMethod],
         onCheckIssuerTrust: CheckIssuerTrustCallback,
         downloadTimeoutInMillis: Int64,
-        executeFlow: (CredentialOffer, IssuerMetadataResult, String, [String]) async throws -> Response
+        executeFlow: (CredentialOffer, IssuerMetadataResult, String, ProofBindingContext) async throws -> Response
     ) async throws -> Response {
         let offer = try await credentialOfferService.fetchCredentialOffer(credentialOffer)
 
@@ -138,7 +143,7 @@ class CredentialOfferFlowHandler {
             onCheckIssuerTrust: onCheckIssuerTrust
         )
 
-        let proofSigningAlgorithmsSupported = issuerMetadataResponse.extractJwtProofSigningAlgorithms(
+        let proofBindingContext = issuerMetadataResponse.toProofBindingContext(
             credentialConfigurationId: credentialConfigurationId
         )
 
@@ -146,7 +151,7 @@ class CredentialOfferFlowHandler {
             offer,
             issuerMetadataResponse,
             credentialConfigurationId,
-            proofSigningAlgorithmsSupported
+            proofBindingContext
         )
     }
 

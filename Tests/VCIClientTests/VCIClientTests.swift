@@ -17,7 +17,7 @@ final class VCIClientTests: XCTestCase {
                 .redirectToWeb(openWebPage: { _ in ["code": "auth-code"] })
             ],
             getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertEqual(result.credentials?.count, 1)
@@ -45,7 +45,7 @@ final class VCIClientTests: XCTestCase {
                     .redirectToWeb(openWebPage: { _ in ["code": "auth-code"] })
                 ],
                 getTokenResponse: { _ in TokenResponse(accessToken: "mock", tokenType: "Bearer") },
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+                getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
             )
         }
     }
@@ -65,7 +65,7 @@ final class VCIClientTests: XCTestCase {
             authorizationMethods: [
                 .redirectToWeb(openWebPage: { _ in ["code": "auth-code"] })
             ],
-            getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+            getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
         )
 
         XCTAssertEqual(result.credentials?.count, 1)
@@ -93,7 +93,7 @@ final class VCIClientTests: XCTestCase {
                 authorizationMethods: [
                     .redirectToWeb(openWebPage: { _ in ["code": "auth-code"] })
                 ],
-                getProofs: { _, _, _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
+                getProofs: { _ in CredentialRequestProofs(proofs: ["mock-jwt"]) }
             )
         }
     }
@@ -175,6 +175,55 @@ final class VCIClientTests: XCTestCase {
             try await client.getCredentialConfigurationsSupported(
                 credentialIssuer: "https://issuer.example.com"
             )
+        }
+    }
+
+    // MARK: - generateTokenDPoPProof
+
+    func testGenerateTokenDPoPProof_throwsWhenNoActiveFlow() {
+        let client = VCIClient(traceabilityId: "test")
+        XCTAssertThrowsError(try client.generateTokenDPoPProof(dpopNonce: "nonce")) { error in
+            XCTAssertEqual((error as? VCIClientException)?.code, "VCI-013")
+        }
+    }
+
+    func testGenerateTokenDPoPProof_returnsValidProofWhenFlowIsActive() throws {
+        let manager = DPoPManager()
+        try manager.initialize(tokenEndpoint: "https://as.example.com/token", authorizationServerSupportedAlgorithms: ["ES256"])
+        let client = VCIClient(traceabilityId: "test", dpopManager: manager)
+
+        let proof = try client.generateTokenDPoPProof(dpopNonce: "test-nonce")
+
+        let parts = proof.components(separatedBy: ".")
+        XCTAssertEqual(parts.count, 3)
+
+        let headerData = try XCTUnwrap(Data(base64URLEncodedString: parts[0]))
+        let header = try XCTUnwrap(JSONSerialization.jsonObject(with: headerData) as? [String: Any])
+        XCTAssertEqual(header["typ"] as? String, "dpop+jwt")
+
+        let claimsData = try XCTUnwrap(Data(base64URLEncodedString: parts[1]))
+        let claims = try XCTUnwrap(JSONSerialization.jsonObject(with: claimsData) as? [String: Any])
+        XCTAssertEqual(claims["nonce"] as? String, "test-nonce")
+        XCTAssertEqual(claims["htm"] as? String, "POST")
+    }
+
+    func testFetchCredentialsUsingCredentialOffer_resetsDpopSessionAfterFlowCompletes() async throws {
+        let manager = DPoPManager()
+        let handler = MockCredentialOfferHandler()
+        handler.shouldInitializeDpopDuringDownload = true
+        let client = VCIClient(traceabilityId: "test", credentialOfferHandler: handler, dpopManager: manager)
+
+        _ = try await client.fetchCredentialsUsingCredentialOffer(
+            credentialOffer: "credential-offer",
+            clientMetadata: ClientMetadata(clientId: "wallet", redirectUri: "https://wallet.example.com/callback"),
+            getTxCode: nil,
+            authorizationMethods: [],
+            getTokenResponse: { _ in TokenResponse(accessToken: "token", tokenType: "DPoP") },
+            getProofs: { _ in CredentialRequestProofs(proofs: []) }
+        )
+
+        XCTAssertThrowsError(try client.generateTokenDPoPProof(dpopNonce: "nonce")) { error in
+            XCTAssertEqual((error as? VCIClientException)?.code, "VCI-013")
         }
     }
 }

@@ -24,26 +24,29 @@ class PreAuthCodeFlowService {
         getTokenResponse: @escaping TokenResponseCallback,
         getProofs: @escaping ProofsCallback,
         credentialConfigurationId: String,
-        proofSigningAlgorithmsSupported: [String],
+        proofBindingContext: ProofBindingContext,
         getTxCode: TxCodeCallback = nil,
-        downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis
+        downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> CredentialResponse {
         try await executeRequestCredentials(
             issuerMetadata: issuerMetadata,
             credentialOffer: credentialOffer,
             getTokenResponse: getTokenResponse,
             credentialConfigurationId: credentialConfigurationId,
-            proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported,
+            proofBindingContext: proofBindingContext,
             getTxCode: getTxCode,
-            downloadTimeoutInMillis: downloadTimeoutInMillis
+            downloadTimeoutInMillis: downloadTimeoutInMillis,
+            dpopManager: dpopManager
         ) { token in
             let proofs: CredentialRequestProofs
-            let nonce = try await nonceService.fetchNonce(issuerMetadata: issuerMetadata, timeoutInMillis: downloadTimeoutInMillis)
+            let nonce = try await nonceService.fetchNonce(issuerMetadata: issuerMetadata, timeoutInMillis: downloadTimeoutInMillis, dpopManager: dpopManager)
             do {
                 proofs = try await getProofs(
-                    issuerMetadata.credentialIssuer,
-                    nonce,
-                    proofSigningAlgorithmsSupported
+                    proofBindingContext.toCredentialRequestProofMetadata(
+                        credentialIssuer: issuerMetadata.credentialIssuer,
+                        nonce: nonce
+                    )
                 )
             } catch {
                 throw DownloadFailedException("Failed to obtain proofs from callback: \(error.localizedDescription)")
@@ -54,7 +57,9 @@ class PreAuthCodeFlowService {
                 credentialConfigurationId: credentialConfigurationId,
                 proofs: proofs,
                 accessToken: token.accessToken,
-                timeoutInMillis: downloadTimeoutInMillis
+                timeoutInMillis: downloadTimeoutInMillis,
+                tokenType: token.tokenType,
+                dpopManager: dpopManager
             )
         }
     }
@@ -65,26 +70,29 @@ class PreAuthCodeFlowService {
         getTokenResponse: @escaping TokenResponseCallback,
         getProofJwt: @escaping ProofJwtCallback,
         credentialConfigurationId: String,
-        proofSigningAlgorithmsSupported: [String],
+        proofBindingContext: ProofBindingContext,
         getTxCode: TxCodeCallback = nil,
-        downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis
+        downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> CredentialResponseDraft13 {
         let response = try await executeRequestCredentials(
             issuerMetadata: issuerMetadata,
             credentialOffer: credentialOffer,
             getTokenResponse: getTokenResponse,
             credentialConfigurationId: credentialConfigurationId,
-            proofSigningAlgorithmsSupported: proofSigningAlgorithmsSupported,
+            proofBindingContext: proofBindingContext,
             getTxCode: getTxCode,
-            downloadTimeoutInMillis: downloadTimeoutInMillis
+            downloadTimeoutInMillis: downloadTimeoutInMillis,
+            dpopManager: dpopManager
         ) { token in
             let nonce = try NonceService.extractNonceFromTokenResponse(token)
             let jwt: String
             do {
                 jwt = try await getProofJwt(
-                    issuerMetadata.credentialIssuer,
-                    nonce,
-                    proofSigningAlgorithmsSupported
+                    proofBindingContext.toCredentialRequestProofMetadata(
+                        credentialIssuer: issuerMetadata.credentialIssuer,
+                        nonce: nonce
+                    )
                 )
             } catch {
                 throw DownloadFailedException("Failed to obtain proof JWT from callback: \(error.localizedDescription)")
@@ -95,7 +103,9 @@ class PreAuthCodeFlowService {
                 credentialConfigurationId: credentialConfigurationId,
                 proof: JWTProof(jwt: jwt),
                 accessToken: token.accessToken,
-                timeoutInMillis: downloadTimeoutInMillis
+                timeoutInMillis: downloadTimeoutInMillis,
+                tokenType: token.tokenType,
+                dpopManager: dpopManager
             )
         }
 
@@ -107,9 +117,10 @@ class PreAuthCodeFlowService {
         credentialOffer: CredentialOffer,
         getTokenResponse: @escaping TokenResponseCallback,
         credentialConfigurationId: String,
-        proofSigningAlgorithmsSupported: [String],
+        proofBindingContext: ProofBindingContext,
         getTxCode: TxCodeCallback,
         downloadTimeoutInMillis: Int64,
+        dpopManager: DPoPManager = DPoPManager(),
         requestCredential: (TokenResponse) async throws -> Response?
     ) async throws -> Response {
         do {
@@ -124,6 +135,11 @@ class PreAuthCodeFlowService {
                     "Token endpoint is missing in Authorization Server metadata."
                 )
             }
+
+            try dpopManager.initialize(
+                tokenEndpoint: tokenEndpoint,
+                authorizationServerSupportedAlgorithms: authServerMetadata.dpopSigningAlgValuesSupported
+            )
 
             guard let grant = credentialOffer.grants?.preAuthorizedGrant else {
                 throw InvalidDataProvidedException(
@@ -149,7 +165,8 @@ class PreAuthCodeFlowService {
                 getTokenResponse: getTokenResponse,
                 tokenEndpoint: tokenEndpoint,
                 preAuthCode: grant.preAuthCode,
-                txCode: txCode
+                txCode: txCode,
+                dpopManager: dpopManager
             )
 
 

@@ -49,8 +49,48 @@ class IssuerMetadataService {
     }
 
     func fetchAndParseIssuerMetadata(from credentialIssuer: String) async throws -> [String: Any] {
-        let wellKnownUrl = credentialIssuer + Constants.credentialIssuerWellknownUriSuffix
+        let wellKnownUrl: String
+        let draft13WellKnownUrl: String
+        do {
+            wellKnownUrl = try Self.buildWellKnownUrl(from: credentialIssuer)
+            draft13WellKnownUrl = Self.buildDraft13WellKnownUrl(from: credentialIssuer)
+        } catch {
+            throw IssuerMetadataFetchException(
+                "Invalid credential issuer URL: \(credentialIssuer)",
+                cause: error
+            )
+        }
 
+        do {
+            return try await fetchAndParse(wellKnownUrl: wellKnownUrl)
+        } catch let error as IssuerMetadataFetchException {
+            if draft13WellKnownUrl == wellKnownUrl { throw error }
+            return try await fetchAndParse(wellKnownUrl: draft13WellKnownUrl)
+        }
+    }
+
+    /// Builds the well-known URL as per RFC 8414 (required since OID4VCI draft 16):
+    /// the well-known suffix is inserted between the authority and the path.
+    /// e.g. https://host/tenant -> https://host/.well-known/openid-credential-issuer/tenant
+    static func buildWellKnownUrl(from credentialIssuer: String) throws -> String {
+        guard let url = WellKnownUrl.insertSuffix(
+            baseUrl: credentialIssuer,
+            suffix: Constants.credentialIssuerWellknownUriSuffix
+        ) else {
+            throw IssuerMetadataFetchException("Invalid credential issuer URL: \(credentialIssuer)")
+        }
+        return url
+    }
+
+    /// Builds the pre-draft-16 (draft 13 / OpenID Connect style) well-known URL:
+    /// the well-known suffix is appended to the issuer URL. Kept as a fallback.
+    static func buildDraft13WellKnownUrl(from credentialIssuer: String) -> String {
+        var normalized = credentialIssuer
+        while normalized.hasSuffix("/") { normalized.removeLast() }
+        return normalized + Constants.credentialIssuerWellknownUriSuffix
+    }
+
+    private func fetchAndParse(wellKnownUrl: String) async throws -> [String: Any] {
         do {
             let response = try await session.sendRequest(
                 url: wellKnownUrl,

@@ -16,7 +16,8 @@ class NonceService {
 
     func fetchNonce(
         issuerMetadata: IssuerMetadata,
-        timeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis
+        timeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis,
+        dpopManager: DPoPManager? = nil
     ) async throws -> String? {
         guard let nonceEndpoint = issuerMetadata.nonceEndpoint, !nonceEndpoint.isEmpty else {
             return nil
@@ -33,6 +34,8 @@ class NonceService {
             timeoutMillis: timeoutInMillis
         )
 
+        dpopManager?.updateNonce(NonceService.header(Constants.dpopNonceHeader, in: response.headers))
+
         guard let nonceResponse = try JsonUtils.deserialize(response.body, as: NonceResponse.self) else {
             throw DownloadFailedException("Failed to parse nonce response.")
         }
@@ -42,6 +45,16 @@ class NonceService {
         }
 
         return cNonce
+    }
+
+    private static func header(_ name: String, in headers: [AnyHashable: Any]?) -> String? {
+        guard let headers = headers else { return nil }
+        for (key, value) in headers {
+            if let keyString = key as? String, keyString.caseInsensitiveCompare(name) == .orderedSame {
+                return value as? String
+            }
+        }
+        return nil
     }
 }
 

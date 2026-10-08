@@ -15,13 +15,14 @@ class TrustedIssuerFlowHandler {
         getTokenResponse: @escaping TokenResponseCallback,
         getProofs: @escaping ProofsCallback,
         downloadTimeoutInMillis: Int64 = Constants.defaultNetworkTimeoutInMillis,
-        networkSession: NetworkManager = NetworkManager.shared
+        networkSession: NetworkManager = NetworkManager.shared,
+        dpopManager: DPoPManager = DPoPManager()
     ) async throws -> CredentialResponse {
         let issuerMetadata = try await loadIssuerMetadata(
             credentialIssuer: credentialIssuer,
             credentialConfigurationId: credentialConfigurationId
         )
-        let proofSigningAlgorithms = issuerMetadata.extractJwtProofSigningAlgorithms(
+        let proofBindingContext = issuerMetadata.toProofBindingContext(
             credentialConfigurationId: credentialConfigurationId
         )
 
@@ -34,14 +35,15 @@ class TrustedIssuerFlowHandler {
                 getTokenResponse: getTokenResponse,
                 getProofs: getProofs,
                 credentialConfigurationId: credentialConfigurationId,
-                proofSigningAlgorithmsSupported: proofSigningAlgorithms,
+                proofBindingContext: proofBindingContext,
                 downloadTimeOutInMillis: downloadTimeoutInMillis,
-                session: networkSession
+                session: networkSession,
+                dpopManager: dpopManager
             )
 
         case .draft13:
-            let proofJwtCallback: ProofJwtCallback = { issuer, nonce, algs in
-                let proofs = try await getProofs(issuer, nonce, algs)
+            let proofJwtCallback: ProofJwtCallback = { proofRequest in
+                let proofs = try await getProofs(proofRequest)
                 guard let jwt = proofs.firstProof else {
                     throw DownloadFailedException("Draft13 issuer requires a single JWT proof")
                 }
@@ -54,9 +56,10 @@ class TrustedIssuerFlowHandler {
                 getTokenResponse: getTokenResponse,
                 getProofJwt: proofJwtCallback,
                 credentialConfigurationId: credentialConfigurationId,
-                proofSigningAlgorithmsSupported: proofSigningAlgorithms,
+                proofBindingContext: proofBindingContext,
                 downloadTimeOutInMillis: downloadTimeoutInMillis,
-                session: networkSession
+                session: networkSession,
+                dpopManager: dpopManager
             )
             return CredentialResponse(
                 credentials: [CredentialItem(credential: draft13Response.credential)],

@@ -2,7 +2,7 @@ import Foundation
 
 enum AuthorizationUrlBuilder {
     
-    static func build(
+    static func buildWithParameters(
         baseUrl: String,
         clientId: String,
         redirectUri: String,
@@ -11,7 +11,8 @@ enum AuthorizationUrlBuilder {
         state: String,
         codeChallenge: String,
         codeChallengeMethod: CodeChallengeMethod = .s256,
-        nonce: String
+        nonce: String,
+        dpopJkt: String
     ) -> String {
         var url = baseUrl
         url += "?client_id=\(encode(clientId))"
@@ -22,6 +23,18 @@ enum AuthorizationUrlBuilder {
         url += "&code_challenge=\(encode(codeChallenge))"
         url += "&code_challenge_method=\(encode(codeChallengeMethod.rawValue))"
         url += "&nonce=\(encode(nonce))"
+        url += "&dpop_jkt=\(encode(dpopJkt))"
+        return url
+    }
+
+    static func buildWithRequestUri(
+        baseUrl: String,
+        clientId: String,
+        requestUri: String
+    ) -> String {
+        var url = baseUrl
+        url += "?client_id=\(encode(clientId))"
+        url += "&request_uri=\(encode(requestUri))"
         return url
     }
 

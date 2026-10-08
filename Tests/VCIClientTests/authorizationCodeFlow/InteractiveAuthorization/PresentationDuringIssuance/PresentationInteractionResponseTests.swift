@@ -121,4 +121,19 @@ final class PresentationInteractionResponseTests: XCTestCase {
 
         XCTAssertThrowsError(try response.validate())
     }
+
+    func testValidate_acceptsDcpInteractionType() throws {
+        let response = try PresentationInteractionResponse(
+            json: [
+                "status": "require_interaction",
+                "type": "urn:openid:dcp:iae:openid4vp_presentation",
+                "auth_session": "session-1",
+                "openid4vp_request": [
+                    "response_type": "vp_token"
+                ]
+            ]
+        )
+
+        XCTAssertNoThrow(try response.validate())
+    }
 }

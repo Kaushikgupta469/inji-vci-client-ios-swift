@@ -258,8 +258,8 @@ The parameter and response mapping is the same as described in the credential of
    - **0.7.0**: Returns: `[VPTokenSigningResultV2]`
    - **1.0.0**: Returns: `[VPTokenSigningResult]` (adds the `id` property in addition to `signedData`)
 
-3. **Two new PDI parameters added**
-   - `jsonLdCanonicalizer` — **required when your wallet presents `ldp_vc` format credentials during PDI**; optional otherwise
+3. **Two new optional parameters added**
+   - `jsonLdCanonicalizer` — **required when your wallet issues `ldp_vc` format credentials during PDI**; optional otherwise
    - `openid4vpWalletConfig` — optional OpenID4VP wallet configuration (trusted verifiers, supported formats, etc.)
 
 4. **Response modes updated**

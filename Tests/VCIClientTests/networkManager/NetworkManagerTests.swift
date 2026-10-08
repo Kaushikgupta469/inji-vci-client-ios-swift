@@ -76,6 +76,33 @@ final class NetworkManagerTests: XCTestCase {
         }
     }
 
+    func testSendRequest_urlRequest_rejectsPlaintextHttp() async {
+        let request = URLRequest(url: URL(string: "http://issuer.example.com/credential")!)
+        do {
+            _ = try await NetworkManager.shared.sendRequest(request: request)
+            XCTFail("Expected plaintext HTTP to be rejected")
+        } catch {
+            XCTAssertTrue(error is NetworkRequestFailedException)
+        }
+    }
+
+    func testSendRequest_urlRequest_allowsHttps() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data("{}".utf8))
+        }
+
+        let request = URLRequest(url: URL(string: "https://example.com/credential")!)
+        let response = try await NetworkManager.shared.sendRequest(request: request)
+
+        XCTAssertEqual(response.body, "{}")
+    }
+
     func testSendRequestHTTPError() async {
         MockURLProtocol.requestHandler = { request in
             let response = HTTPURLResponse(

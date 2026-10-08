@@ -59,7 +59,8 @@ final class AuthorizationModelTests: XCTestCase {
             codeChallenge: "abc123",
             redirectUri: "app://callback",
             authorizationDetails: details,
-            interactionTypesSupported: ["openid4vp_presentation", "something_else"]
+            interactionTypesSupported: ["openid4vp_presentation", "something_else"],
+            dpopJkt: "test-jkt"
         )
 
         // Verify defaulted fields
@@ -100,6 +101,53 @@ final class AuthorizationModelTests: XCTestCase {
         XCTAssertEqual(authDetailsParsed?.count, 1)
         XCTAssertEqual(authDetailsParsed?.first?["type"] as? String, "openid_credential")
         XCTAssertEqual(authDetailsParsed?.first?["credential_configuration_id"] as? String, "cfg1")
+    }
+
+
+    func test_IARInitialRequestBody_toFormMap_includesLegacyAndIAEInteractionTypes() throws {
+
+        let details = [
+            AuthorizationDetails(
+                type: "openid_credential",
+                credentialConfigurationId: "cfg1"
+            )
+        ]
+
+        let body = IARInitialRequestBody(
+            clientId: "client-123",
+            codeChallenge: "challenge",
+            redirectUri: "app://callback",
+            authorizationDetails: details,
+            interactionTypesSupported: [
+                InteractionType.openId4VpPresentation.rawValue,
+                InteractionType.openId4VpPresentationIAE.rawValue
+            ],
+            dpopJkt: "test-jkt"
+        )
+
+        let form = body.toFormMap()
+
+        XCTAssertEqual(
+            form["interaction_types_supported"],
+            "\(InteractionType.openId4VpPresentation.rawValue),\(InteractionType.openId4VpPresentationIAE.rawValue)"
+        )
+    }
+
+    func test_IARInitialRequestBody_includesDpopJkt_whenProvided() throws {
+        let body = IARInitialRequestBody(
+            clientId: "client-123",
+            codeChallenge: "challenge",
+            redirectUri: "app://callback",
+            authorizationDetails: [],
+            interactionTypesSupported: ["openid4vp_presentation"],
+            dpopJkt: "thumb-print-value"
+        )
+
+        XCTAssertEqual(body.toFormMap()["dpop_jkt"], "thumb-print-value")
+
+        let data = try JSONEncoder().encode(body)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["dpop_jkt"] as? String, "thumb-print-value")
     }
 
     // MARK: - AuthorizationResponse (Codable)

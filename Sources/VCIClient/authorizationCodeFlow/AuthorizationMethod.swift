@@ -18,7 +18,7 @@ public enum AuthorizationMethod {
         case .redirectToWeb:
             return .redirectToWeb
         case .presentationDuringIssuance:
-            return .openId4VpPresentation
+            return .openId4VpPresentationIAE
         }
     }
 }

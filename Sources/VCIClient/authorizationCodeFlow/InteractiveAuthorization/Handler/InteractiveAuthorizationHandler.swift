@@ -12,15 +12,24 @@ class InteractiveAuthorizationHandler {
         clientMetadata: ClientMetadata,
         credentialConfigurationId: String,
         authorizationMethods: [AuthorizationMethod],
-        pkceSession: PKCESessionManager.PKCESession
+        pkceSession: PKCESessionManager.PKCESession,
+        dpopJkt: String
     ) async throws -> AuthorizationResponse {
         
         do {
-            let interactionTypesSupported = authorizationMethods.compactMap { method in
-                let type = method.type.rawValue
-                return type != InteractionType.redirectToWeb.rawValue ? type : nil
+            let interactionTypesSupported = authorizationMethods.flatMap { method -> [String] in
+                switch method {
+                case .redirectToWeb:
+                    return []
+
+                case .presentationDuringIssuance:
+                    return [
+                        InteractionType.openId4VpPresentation.rawValue,
+                        InteractionType.openId4VpPresentationIAE.rawValue
+                    ]
+                }
             }
-            
+
             if interactionTypesSupported.isEmpty {
                 throw InteractiveAuthorizationException(
                     message: "No supported interaction types found in authorization methods"
@@ -31,7 +40,8 @@ class InteractiveAuthorizationHandler {
                 clientMetadata: clientMetadata,
                 credentialConfigurationId: credentialConfigurationId,
                 pkce: pkceSession,
-                interactionTypesSupported: interactionTypesSupported
+                interactionTypesSupported: interactionTypesSupported,
+                dpopJkt: dpopJkt
             )
             
             let interactiveAuthorizationResponse = try await networkManager.sendRequest(
@@ -43,7 +53,8 @@ class InteractiveAuthorizationHandler {
             
             let type: String = try extractTypeAndThrowIfError(interactiveAuthorizationResponse.body)
             
-            if type == InteractionType.openId4VpPresentation.rawValue {
+            if type == InteractionType.openId4VpPresentation.rawValue ||
+               type == InteractionType.openId4VpPresentationIAE.rawValue {
                 return try await handlePresentationInteraction(
                     presentationInteractionResponse: interactiveAuthorizationResponse.body,
                     authorizationMethods: authorizationMethods,
@@ -81,22 +92,24 @@ class InteractiveAuthorizationHandler {
         clientMetadata: ClientMetadata,
         credentialConfigurationId: String,
         pkce: PKCESessionManager.PKCESession,
-        interactionTypesSupported: [String]
+        interactionTypesSupported: [String],
+        dpopJkt: String
     ) -> [String: String] {
-        
+
         let details = [
             AuthorizationDetails(
                 type: "openid_credential",
                 credentialConfigurationId: credentialConfigurationId
             )
         ]
-        
+
         return IARInitialRequestBody(
             clientId: clientMetadata.clientId,
             codeChallenge: pkce.codeChallenge,
             redirectUri: clientMetadata.redirectUri,
             authorizationDetails: details,
-            interactionTypesSupported: interactionTypesSupported
+            interactionTypesSupported: interactionTypesSupported,
+            dpopJkt: dpopJkt
         ).toFormMap()
     }
     
@@ -144,7 +157,9 @@ class InteractiveAuthorizationHandler {
         }
         
         guard
-            case let .presentationDuringIssuance(jsonLdCanonicalizer, openid4vpWalletConfig, selectCredentialsForPresentation, signVerifiablePresentation) = authorizationMethods.first(where: { $0.type == .openId4VpPresentation })
+            case let .presentationDuringIssuance(jsonLdCanonicalizer, openid4vpWalletConfig, selectCredentialsForPresentation, signVerifiablePresentation) = authorizationMethods.first(where: {
+                $0.type == .openId4VpPresentationIAE
+            })
         else {
             throw InteractiveAuthorizationException(message: "Presentation callback missing")
         }
