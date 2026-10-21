@@ -69,6 +69,7 @@ The implementation follows:
   - `ldp_vc`
   - `mso_mdoc`
   - `vc+sd-jwt` / `dc+sd-jwt`
+- Credentials without holder binding: no proof is sent when the credential configuration does not declare both `cryptographic_binding_methods_supported` and `proof_types_supported`
 
 [//]: # (The reference for PDI  is intentionally pointing to kotlin library master branch to be release agnostic, as the PDI support is available for both kotlin and swift libraries. The documentation for PDI support is also common for both libraries, hence it is placed in the common doc folder in the root of the repository.)
 - Presentation During Issuance (PDI) support for both download flows (For more details on PDI support, please refer to the [Presentation During Issuance documentation](https://github.com/inji/inji-vci-client/tree/master/doc/presentation-during-issuance-support.md))
@@ -282,7 +283,7 @@ Both methods use the OpenID4VCI 1.0-facing proof callback and return a normalize
 | getTxCode               | TxCodeCallback                | No       | N/A           | Optional callback for TX Code in pre-authorized flows                                                                                                                  |
 | authorizationMethods    | [AuthorizationMethod]         | Yes      | N/A           | Supported authorization callbacks for interactive flows [see authorization details](#authorizations)                                                                   |
 | getTokenResponse        | TokenResponseCallback         | Yes      | N/A           | Callback that exchanges the authorization grant for an access token                                                                                                    |
-| getProofs               | ProofsCallback                | Yes      | N/A           | Callback that prepares the proof set for the credential request, returning a `CredentialRequestProofs`                                                                 |
+| getProofs               | ProofsCallback                | Yes      | N/A           | Callback that prepares the proof set for the credential request, returning a `CredentialRequestProofs`. Not called when the credential configuration does not declare both `cryptographic_binding_methods_supported` and `proof_types_supported`; the request is then sent without a proof and no nonce is fetched.                                                                 |
 | onCheckIssuerTrust      | CheckIssuerTrustCallback      | No       | nil           | Optional callback to confirm that the issuer is trusted                                                                                                                |
 | downloadTimeoutInMillis | Int64                         | No       | 10000         | Timeout for the credential request to the issuer                                                                                                                       |
 
@@ -352,7 +353,7 @@ credentialResponse.credentialIssuer // eg - "https://sample-issuer.com"
 | clientMetadata            | ClientMetadata             | Yes      | N/A           | Contains client ID and redirect URI                                                                                                                                    |
 | authorizationMethods      | [AuthorizationMethod]      | Yes      | N/A           | Supported authorization callbacks for interactive flows [see authorization details](#authorizations)                                                                   |
 | getTokenResponse          | TokenResponseCallback      | Yes      | N/A           | Callback that exchanges the authorization grant for an access token                                                                                                    |
-| getProofs                 | ProofsCallback             | Yes      | N/A           | Callback that prepares the proof set for the credential request, returning a `CredentialRequestProofs`                                                                 |
+| getProofs                 | ProofsCallback             | Yes      | N/A           | Callback that prepares the proof set for the credential request, returning a `CredentialRequestProofs`. Not called when the credential configuration does not declare both `cryptographic_binding_methods_supported` and `proof_types_supported`; the request is then sent without a proof and no nonce is fetched.                                                                 |
 | downloadTimeoutInMillis   | Int64                      | No       | 10000         | Timeout for the credential request to the issuer                                                                                                                       |
 
 #### Returns
